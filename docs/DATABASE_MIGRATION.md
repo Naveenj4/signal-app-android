@@ -43,3 +43,4 @@ This guarantees:
 1. 100% preservation of all existing conversations, messages, and attachments.
 2. Existing group records remain intact and instantly functional.
 3. Zero risk of SQLCipher migration failures on existing databases.
+

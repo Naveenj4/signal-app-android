@@ -5085,9 +5085,10 @@ class ConversationFragment :
       val containsPhoto = result.nonUploadedMedia.any { MediaUtil.isImageType(it.contentType) || MediaUtil.isGif(it.contentType) } ||
         result.preUploadResults.any { MediaUtil.isImageType(it.media.contentType) || MediaUtil.isGif(it.media.contentType) }
 
-      if (containsPhoto && recipientSnapshot != null && !org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(recipientSnapshot.isGroup)) {
-        Log.w(TAG, "Photo sending in 1:1 chat blocked by MediaExportPolicy.")
-        toast(R.string.MediaPreviewActivity_cant_find_an_app_able_to_share_this_media)
+      val isAdmin = recipientSnapshot?.isGroup == true && conversationGroupViewModel.isAdmin()
+      if (containsPhoto && recipientSnapshot != null && !org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(recipientSnapshot.isGroup, isAdmin)) {
+        Log.w(TAG, "Group photo sending blocked for non-admin by MediaExportPolicy.")
+        android.widget.Toast.makeText(requireContext(), org.thoughtcrime.securesms.privacy.MediaExportPolicy.GROUP_PHOTO_ADMIN_ONLY_EXPLANATION, android.widget.Toast.LENGTH_LONG).show()
         return
       }
 
@@ -5600,8 +5601,9 @@ class ConversationFragment :
 
     override fun onQuickCameraToggleClicked() {
       val recipient = viewModel.recipientSnapshot ?: return
-      if (!org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(recipient.isGroup)) {
-        toast(R.string.MediaPreviewActivity_cant_find_an_app_able_to_share_this_media)
+      val isAdmin = recipient.isGroup && conversationGroupViewModel.isAdmin()
+      if (!org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(recipient.isGroup, isAdmin)) {
+        android.widget.Toast.makeText(requireContext(), org.thoughtcrime.securesms.privacy.MediaExportPolicy.GROUP_PHOTO_ADMIN_ONLY_EXPLANATION, android.widget.Toast.LENGTH_LONG).show()
         return
       }
       composeText.clearFocus()
@@ -5613,8 +5615,9 @@ class ConversationFragment :
     fun onMediaSelected(uri: Uri, contentType: String?) {
       val recipient = viewModel.recipientSnapshot
       val isPhoto = MediaUtil.isGif(contentType) || MediaUtil.isImageType(contentType)
-      if (isPhoto && recipient != null && !org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(recipient.isGroup)) {
-        toast(R.string.MediaPreviewActivity_cant_find_an_app_able_to_share_this_media)
+      val isAdmin = recipient?.isGroup == true && conversationGroupViewModel.isAdmin()
+      if (isPhoto && recipient != null && !org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(recipient.isGroup, isAdmin)) {
+        android.widget.Toast.makeText(requireContext(), org.thoughtcrime.securesms.privacy.MediaExportPolicy.GROUP_PHOTO_ADMIN_ONLY_EXPLANATION, android.widget.Toast.LENGTH_LONG).show()
         return
       }
       if (inputPanel.inEditMessageMode()) {
@@ -5682,8 +5685,9 @@ class ConversationFragment :
       if (button != null) {
         when (button) {
           AttachmentKeyboardButton.GALLERY -> {
-            if (!org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(recipient.isGroup)) {
-              toast(R.string.MediaPreviewActivity_cant_find_an_app_able_to_share_this_media)
+            val isAdmin = recipient.isGroup && conversationGroupViewModel.isAdmin()
+            if (!org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(recipient.isGroup, isAdmin)) {
+              android.widget.Toast.makeText(requireContext(), org.thoughtcrime.securesms.privacy.MediaExportPolicy.GROUP_PHOTO_ADMIN_ONLY_EXPLANATION, android.widget.Toast.LENGTH_LONG).show()
             } else {
               conversationActivityResultContracts.launchGallery(recipient.id, composeText.textTrimmed, inputPanel.quote.isPresent)
             }

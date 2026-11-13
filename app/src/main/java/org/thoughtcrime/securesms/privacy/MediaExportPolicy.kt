@@ -32,24 +32,40 @@ object MediaExportPolicy {
   var isExportRestrictionEnforced: Boolean = true
 
   /**
-   * When true, sending photos is permitted only in group chats, not in 1:1 person-to-person chats.
+   * When true, sending photos in group chats is restricted to group administrators only.
    * Default is true.
    */
   @Volatile
-  var isGroupOnlyPhotoSharingEnforced: Boolean = true
+  var isAdminOnlyGroupPhotoSharingEnforced: Boolean = true
 
   /**
-   * Evaluates whether sending photos is permitted for the given conversation type.
+   * Standard explanation message when a regular group member attempts to send photos in a group.
+   */
+  const val GROUP_PHOTO_ADMIN_ONLY_EXPLANATION: String = "Only group administrators can send photos in this group."
+
+  /**
+   * Evaluates whether sending photos is permitted for the given conversation type and sender role.
+   *
+   * Rules:
+   * 1. One-to-one (1:1) private chats: Always ALLOWED for all users (Feature B preserved).
+   * 2. Group chats: ALLOWED only if sender is a Group Administrator (Feature C enforced).
    *
    * @param isGroup True if the destination conversation is a group, false if 1:1 chat.
+   * @param isAdmin True if the current user is an administrator of the group (ignored for 1:1).
    * @return True if sending photos is allowed, false if blocked by policy.
    */
   @JvmStatic
-  fun isPhotoSendAllowed(isGroup: Boolean): Boolean {
-    if (!isGroupOnlyPhotoSharingEnforced) {
+  @JvmOverloads
+  fun isPhotoSendAllowed(isGroup: Boolean, isAdmin: Boolean = false): Boolean {
+    if (!isAdminOnlyGroupPhotoSharingEnforced) {
       return true
     }
-    return isGroup
+    // 1:1 photo messaging is preserved for all users
+    if (!isGroup) {
+      return true
+    }
+    // In group chats, only administrators can send photos
+    return isAdmin
   }
 
   /**

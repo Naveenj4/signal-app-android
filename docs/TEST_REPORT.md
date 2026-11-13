@@ -69,3 +69,4 @@ This document establishes the test scenarios, validation steps, and expected out
 | **REG-02** | Voice and video calling | WebRTC calls connect with audio/video | Planned |
 | **REG-03** | Push notifications | Messages wake client and notify user | Planned |
 | **REG-04** | SQLCipher database integrity | Preserved across restarts and updates | Planned |
+

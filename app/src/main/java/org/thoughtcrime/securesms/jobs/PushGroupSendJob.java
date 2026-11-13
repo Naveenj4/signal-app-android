@@ -156,6 +156,15 @@ public final class PushGroupSendJob extends PushSendJob {
         throw new MmsException("Inactive group!");
       }
 
+      boolean hasPhoto = message.getAttachments().stream().anyMatch(a -> org.thoughtcrime.securesms.util.MediaUtil.isImageType(a.getContentType()) || org.thoughtcrime.securesms.util.MediaUtil.isGif(a.getContentType()));
+      if (hasPhoto) {
+        Optional<GroupRecord> groupRecord = SignalDatabase.groups().getGroup(group.getGroupId());
+        boolean isAdmin = groupRecord.isPresent() && groupRecord.get().isAdmin(Recipient.self());
+        if (!org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(true, isAdmin)) {
+          throw new MmsException("Regular members cannot send photos in groups: " + org.thoughtcrime.securesms.privacy.MediaExportPolicy.GROUP_PHOTO_ADMIN_ONLY_EXPLANATION);
+        }
+      }
+
       boolean hasMedia            = attachmentUploadIds.size() > 0;
       boolean addHardDependencies = hasMedia && !isScheduledSend;
 
@@ -221,6 +230,18 @@ public final class PushGroupSendJob extends PushSendJob {
 
     if (groupRecipient.isPushV1Group()) {
       throw new MmsException("No GV1 messages can be sent anymore!");
+    }
+
+    boolean hasPhoto = message.getAttachments().stream().anyMatch(a -> org.thoughtcrime.securesms.util.MediaUtil.isImageType(a.getContentType()) || org.thoughtcrime.securesms.util.MediaUtil.isGif(a.getContentType()));
+    if (hasPhoto && groupRecipient.getGroupId().isPresent()) {
+      Optional<GroupRecord> groupRecord = SignalDatabase.groups().getGroup(groupRecipient.getGroupId().get());
+      boolean isAdmin = groupRecord.isPresent() && groupRecord.get().isAdmin(Recipient.self());
+      if (!org.thoughtcrime.securesms.privacy.MediaExportPolicy.isPhotoSendAllowed(true, isAdmin)) {
+        log(TAG, String.valueOf(message.getSentTimeMillis()), "Sender is not a group administrator. Rejecting group photo send.");
+        database.markAsSentFailed(messageId);
+        notifyMediaMessageDeliveryFailed(context, messageId);
+        return;
+      }
     }
 
     if ((message.getStoryType().isStory() || message.getParentStoryId() != null) && !groupRecipient.isActiveGroup()) {

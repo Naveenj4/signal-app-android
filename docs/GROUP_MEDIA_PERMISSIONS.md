@@ -123,3 +123,4 @@ Signal's backend server does not have access to plaintext message contents or at
 2. **Sender-Side Mandatory Checks**: All compliant clients enforce multi-stage authorization before staging, uploading, and transmitting.
 3. **Receiver-Side Authentication**: Receiving clients validate sender administrator credentials against their local authenticated group state before displaying media.
 4. **Server-Side Policy Extension (Optional Future Enhancement)**: For hostile or rogue client resistance, the server can be extended with authenticated role tokens attached to attachment upload requests.
+

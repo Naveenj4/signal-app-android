@@ -18,23 +18,29 @@ class MediaExportPolicyTest {
   @Before
   fun setUp() {
     MediaExportPolicy.isExportRestrictionEnforced = true
-    MediaExportPolicy.isGroupOnlyPhotoSharingEnforced = true
+    MediaExportPolicy.isAdminOnlyGroupPhotoSharingEnforced = true
   }
 
   @After
   fun tearDown() {
     MediaExportPolicy.isExportRestrictionEnforced = true
-    MediaExportPolicy.isGroupOnlyPhotoSharingEnforced = true
+    MediaExportPolicy.isAdminOnlyGroupPhotoSharingEnforced = true
   }
 
   @Test
-  fun `sending photos in group chat is allowed`() {
-    assertThat(MediaExportPolicy.isPhotoSendAllowed(isGroup = true)).isTrue()
+  fun `sending photos in 1-to-1 person chat is always allowed for all users`() {
+    assertThat(MediaExportPolicy.isPhotoSendAllowed(isGroup = false, isAdmin = false)).isTrue()
+    assertThat(MediaExportPolicy.isPhotoSendAllowed(isGroup = false, isAdmin = true)).isTrue()
   }
 
   @Test
-  fun `sending photos in 1-to-1 person chat is disallowed when policy enforced`() {
-    assertThat(MediaExportPolicy.isPhotoSendAllowed(isGroup = false)).isFalse()
+  fun `sending photos in group chat is allowed for group administrators`() {
+    assertThat(MediaExportPolicy.isPhotoSendAllowed(isGroup = true, isAdmin = true)).isTrue()
+  }
+
+  @Test
+  fun `sending photos in group chat is disallowed for regular members`() {
+    assertThat(MediaExportPolicy.isPhotoSendAllowed(isGroup = true, isAdmin = false)).isFalse()
   }
 
   @Test

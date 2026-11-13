@@ -65,3 +65,4 @@ Prevent received media from escaping the application sandbox:
   - `onTrimMemory()` in `ApplicationContext.java`: Purges temporary decrypted views when app is backgrounded.
   - User Logout / Deregistration: Performs cryptographic key purge and deletes all cached media files.
   - App Process Death: Ephemeral cache is swept and cleaned during `AppStartup`.
+
