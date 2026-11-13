@@ -39,5 +39,7 @@ sample-videos/
 **/node_modules/
 *.apk
 server/config.env
+run_tests.bat
+
 
 

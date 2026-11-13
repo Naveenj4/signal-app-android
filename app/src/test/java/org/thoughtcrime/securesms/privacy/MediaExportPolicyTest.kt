@@ -76,9 +76,10 @@ class MediaExportPolicyTest {
   @Test
   fun `all export operations allowed when policy unenforced`() {
     MediaExportPolicy.isExportRestrictionEnforced = false
-    MediaExportPolicy.isGroupOnlyPhotoSharingEnforced = false
+    MediaExportPolicy.isAdminOnlyGroupPhotoSharingEnforced = false
 
     assertThat(MediaExportPolicy.isPhotoSendAllowed(isGroup = false)).isTrue()
+    assertThat(MediaExportPolicy.isPhotoSendAllowed(isGroup = true, isAdmin = false)).isTrue()
     assertThat(MediaExportPolicy.isSaveToStorageAllowed(isOutgoing = false)).isTrue()
     assertThat(MediaExportPolicy.isExternalShareAllowed(isOutgoing = false)).isTrue()
     assertThat(MediaExportPolicy.isExternalPackageAccessAllowed("com.suspicious.app")).isTrue()

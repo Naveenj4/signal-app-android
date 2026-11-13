@@ -115,18 +115,21 @@ object MediaExportPolicy {
       return true
     }
 
-    val callingUid = Binder.getCallingUid()
-    val myUid = Process.myUid()
-
-    if (callingUid == myUid) {
-      return true
-    }
-
     if (callingPackage != null && callingPackage == BuildConfig.APPLICATION_ID) {
       return true
     }
 
-    Log.w(TAG, "Denied external access attempt by package: $callingPackage (uid: $callingUid, expected: $myUid)")
+    try {
+      val callingUid = Binder.getCallingUid()
+      val myUid = Process.myUid()
+      if (callingUid == myUid) {
+        return true
+      }
+    } catch (_: Throwable) {
+      // In host JVM unit test environment without Android Binder service
+    }
+
+    Log.w(TAG, "Denied external access attempt by package: $callingPackage")
     return false
   }
 }

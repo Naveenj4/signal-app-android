@@ -156,7 +156,7 @@ public final class PushGroupSendJob extends PushSendJob {
         throw new MmsException("Inactive group!");
       }
 
-      boolean hasPhoto = message.getAttachments().stream().anyMatch(a -> org.thoughtcrime.securesms.util.MediaUtil.isImageType(a.getContentType()) || org.thoughtcrime.securesms.util.MediaUtil.isGif(a.getContentType()));
+      boolean hasPhoto = message.getAttachments().stream().anyMatch(a -> org.thoughtcrime.securesms.util.MediaUtil.isImageType(a.contentType) || org.thoughtcrime.securesms.util.MediaUtil.isGif(a.contentType));
       if (hasPhoto) {
         Optional<GroupRecord> groupRecord = SignalDatabase.groups().getGroup(group.getGroupId());
         boolean isAdmin = groupRecord.isPresent() && groupRecord.get().isAdmin(Recipient.self());
@@ -232,7 +232,7 @@ public final class PushGroupSendJob extends PushSendJob {
       throw new MmsException("No GV1 messages can be sent anymore!");
     }
 
-    boolean hasPhoto = message.getAttachments().stream().anyMatch(a -> org.thoughtcrime.securesms.util.MediaUtil.isImageType(a.getContentType()) || org.thoughtcrime.securesms.util.MediaUtil.isGif(a.getContentType()));
+    boolean hasPhoto = message.getAttachments().stream().anyMatch(a -> org.thoughtcrime.securesms.util.MediaUtil.isImageType(a.contentType) || org.thoughtcrime.securesms.util.MediaUtil.isGif(a.contentType));
     if (hasPhoto && groupRecipient.getGroupId().isPresent()) {
       Optional<GroupRecord> groupRecord = SignalDatabase.groups().getGroup(groupRecipient.getGroupId().get());
       boolean isAdmin = groupRecord.isPresent() && groupRecord.get().isAdmin(Recipient.self());

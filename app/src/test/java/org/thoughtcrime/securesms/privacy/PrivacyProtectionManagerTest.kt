@@ -36,3 +36,4 @@ class PrivacyProtectionManagerTest {
     // Depending on test mock environment
   }
 }
+
