@@ -1,104 +1,169 @@
-# Signal Android – Complete Codebase Architecture Audit
+# SECURECHAT – Architectural Audit & Baseline Inventory
 
-## 1. Project Structure and App Entry Points
-Signal Android is structured as an advanced multi-module Android project designed for scale, modularity, and compile-time isolation:
-- `app/`: Primary application module containing the core client UI, business logic, SQLCipher database, domain repositories, background jobs, and application lifecycle observers.
-- `core/`: Foundational shared libraries including:
-  - `core/ui`: Shared UI components, window helpers (`WindowExtensions.kt`), theme styling, and base dialog fragments.
-  - `core/util`: Concurrency utilities, streams, logging primitives (`Log.java`), and common extensions.
-  - `core/models`: Core domain and database data models (e.g., `AttachmentId`, `RecipientId`).
-- `feature/`: Feature modules providing self-contained user flows:
-  - `feature/settings`: Application and chat settings screens.
-  - `feature/registration`: Onboarding, phone verification, PIN creation, and account recovery.
-  - `feature/media-send`: Media picker, camera capture, image editor, and attachment preparation.
-  - `feature/media-viewer`: Standalone/shared media viewing components.
-- `lib/`: Independent foundational libraries:
-  - `lib/signal-service`: Low-level protocol, cryptographic primitives, and server network layer.
-  - `lib/image-editor`: Canvas and sticker editing tools.
-  - `lib/video`: Video transcoding and streaming tools.
+## 1. Executive Summary & Repository Scope
+This document provides the foundational engineering audit of the Signal Android codebase (`Signal-Android` v8.35.2) in preparation for the SecureChat privacy and group media security enhancements. 
 
-### Application Entry Points
-- `org.thoughtcrime.securesms.ApplicationContext`: The primary `android.app.Application` subclass initialized at process start. It initializes `AppDependencies`, `SignalStore`, SQLCipher database encryption, cryptographic secrets, logging, background job queues, and security policies.
-- `org.thoughtcrime.securesms.MainActivity`: Primary launcher activity routing users to either registration/onboarding (`RegistrationActivity`) or the main conversation list (`ConversationListFragment`).
-- `org.thoughtcrime.securesms.conversation.v2.ConversationActivity`: Primary chat activity hosting 1:1 and group messaging UI (`ConversationFragment`).
-- `org.thoughtcrime.securesms.mediaviewer.MediaViewerActivity` / `org.thoughtcrime.securesms.mediapreview.MediaPreviewActivity`: Primary entry points for viewing received and sent media (images, videos, documents).
+The audit covers:
+- System module boundaries, dependency injection, and application lifecycle.
+- 1:1 and group messaging pipelines under the Signal Protocol (Double Ratchet, PreKeys, Sender Keys).
+- Group permission, membership, and administrator role hierarchy (`GroupsV2`).
+- Attachment selection, staging, encryption, CDN upload, and on-demand rendering.
+- Screenshot, screen recording, and hardware surface protections.
+- External media export entry points (Share sheets, MediaStore, ContentProviders).
+- Storage architecture, SQLCipher database schemas, and ephemeral cache lifecycle.
 
-## 2. Activity and Fragment Architecture
-- **Base Activity**: `org.thoughtcrime.securesms.BaseActivity` extends `AppCompatActivity` and serves as the common base class for top-level activities. It handles edge-to-edge system bar configuration, dynamic theme resolution, and window screenshot security via `WindowUtil.initializeScreenshotSecurity(this, getWindow())`.
-- **Base Dialogs**:
-  - `FullScreenDialogFragment` and `WrapperDialogFragment`: Common dialog abstractions in `app`.
-  - `FixedRoundedCornerBottomSheetDialogFragment` and `ComposeFullScreenDialogFragment`: Base classes in `core/ui` configuring window flags, system insets, and screenshot security.
-- **Fragments**: Signal utilizes Jetpack Navigation and fragment transactions across feature flows, hosting both legacy XML view bindings and modern Jetpack Compose layouts.
+---
 
-## 3. Jetpack Compose and XML UI Usage
-The repository is in an active hybrid state:
-- **XML Views**: Legacy conversation lists, bubble views (`ConversationItem`), custom widgets (`ComposeText`), and classic dialogs utilize standard Android XML layouts and data binding/view binding.
-- **Jetpack Compose**: Modernized settings, registration flows, stories, avatar picker, and the new media viewer (`MediaViewerActivity`) are implemented in Jetpack Compose.
-- **Window Interoperability**: Security controls must operate at the Android `Window` level (`android.view.Window`) rather than purely within Compose or XML layout hierarchies to ensure full platform-level coverage across all UI implementations.
+## 2. Repository Module Structure & Application Lifecycles
 
-## 4. Navigation Architecture
-- **Activities**: Top-level entry points (`MainActivity`, `ConversationActivity`, `MediaViewerActivity`, `AppSettingsActivity`) are coordinated via explicit Android Intents.
-- **Jetpack Navigation Component**: Used extensively within modern modules (`feature/registration`, `feature/settings`) for intra-feature screen routing.
-- **Bottom Sheets & Dialogs**: Managed via `FragmentManager` using specialized base dialog fragments that bind to host windows.
+### 2.1 Multi-Module Breakdown
+Signal Android is structured into isolated functional modules:
+- `:app`: Main client application containing UI, ViewModels, SQLCipher databases, background jobs, and application lifecycle coordinators.
+- `:core:ui`: Common UI foundations, base themes, window extensions (`WindowExtensions.kt`), and dialog scaffolding.
+- `:core:util`: Core utilities including logging (`Log.java`), stream utilities, and threading primitives.
+- `:core:models`: Shared cross-module models (`RecipientId`, `AttachmentId`, `ThreadId`).
+- `:feature:media-send`: Media selection, photo picker invocation, camera capture, image editor, and attachment preparation.
+- `:feature:media-viewer`: Standalone and conversational media preview and viewing components.
+- `:feature:registration`: Onboarding, phone verification, PIN validation, and account recovery.
+- `:lib:video`: Video streaming, ExoPlayer wrapper, and transcoding tools.
+- `:lib:signal-service`: Network protocol, cryptographic operations, and CDN transport.
 
-## 5. Conversation and Group Messaging Implementations
-- **1:1 Messaging**: Messages are stored in the local encrypted database (`MessageTable`, `MmsDatabase`) and transmitted using the Signal Protocol (Double Ratchet, Prekeys) via `SignalWebSocketHealthMonitor` and encrypted REST endpoints.
-- **Group Messaging**: Signal Groups (GroupsV2) use client-side sender keys and decrypted profile keys. Group state is managed via `GroupManager` and `GroupDatabase`. Attachments in groups are encrypted once with an ephemeral symmetric key and sent to CDN, while keys are delivered via encrypted sender key messages to group members.
+### 2.2 Application Lifecycle and Key Singletons
+- **`ApplicationContext`** (`org.thoughtcrime.securesms.ApplicationContext`): Root `Application` class. Configures:
+  - `SignalStore`: Shared encrypted preference and key-value storage.
+  - `AppDependencies`: Dependency injection graph for database accessors, job managers, and protocol clients.
+  - `KeyCachingService`: In-memory master key holder.
+  - System memory trim observers (`onTrimMemory`, `onLowMemory`).
+- **`BaseActivity`** (`org.thoughtcrime.securesms.BaseActivity`): Inherited by all primary UI activities (`MainActivity`, `ConversationActivity`, `MediaViewerActivity`). Controls window flags, dynamic themes, and screenshot security.
 
-## 6. Attachment Selection and Upload Workflows
-- **Selection**: Initiated from `ConversationFragment` via attachment menu or system photo picker (`ActivityResultContracts.PickVisualMedia` / `PickMultipleVisualMedia`), preventing unrestricted gallery read access.
-- **Preparation & Staging**: Handled by `MediaSendV3Repository` and `BlobProvider`. Raw content streams are processed, transcoded (if video), stripped of sensitive metadata (EXIF GPS), and staged in app-private temporary blob storage.
-- **Encryption & Upload**: `AttachmentUploadJob` encrypts the attachment payload using AES-256-GCM / streaming encryption with random keys and uploads the ciphertext to the Signal CDN. The resulting encryption keys, digest, and CDN location are attached to the outgoing encrypted message payload.
+---
 
-## 7. Media Download and Rendering Workflows
-- **Download**: When a message with media is received, `AttachmentDownloadJob` fetches the ciphertext from the Signal CDN.
-- **Storage At Rest**: Ciphertext from CDN is decrypted and immediately re-encrypted at rest using Signal's app-specific `AttachmentSecret` (AES-CBC + HMAC) and saved into the app's private `parts/` directory via `AttachmentTable`.
-- **Streaming & Rendering**: Media is loaded on-demand via `PartAuthority.getAttachmentStream()`, which invokes `ModernDecryptingPartInputStream` to decrypt data on-the-fly directly into memory buffers for Glide image rendering or ExoPlayer video playback. Plaintext media is never persisted unencrypted to disk during standard viewing.
+## 3. Messaging Implementation: 1:1 vs Group Conversations
 
-## 8. Database and Attachment Persistence Mechanisms
-- **Encrypted Database**: Signal uses SQLCipher (`SignalDatabase`) with a master secret derived from passphrase/keystore.
-- **Attachment Metadata**: Tracked in `AttachmentTable` (`app/src/main/java/org/thoughtcrime/securesms/database/AttachmentTable.kt`), storing content types, byte sizes, blurhashes, transfer state, and relative file paths within the private `app_parts` directory.
-- **Integrity**: Each attachment part has associated cryptographic hashes (`DATA_HASH_START`, `DATA_HASH_END`) and a random salt (`DATA_RANDOM`) preventing unauthorized tampering or cross-file correlation.
+### 3.1 One-to-One (1:1) Messaging Architecture
+- **Protocol**: Signal Protocol using Double Ratchet, Curve25519, AES-256-CBC/GCM, and HMAC-SHA256.
+- **Delivery Flow**:
+  1. User selects recipient and composes text or attaches photos.
+  2. Outgoing message is staged in local database (`MessageTable`, `MmsDatabase`).
+  3. `AttachmentUploadJob` encrypts attachments with unique AES keys and streams to CDN.
+  4. Message envelope containing ciphertext and attachment pointers is dispatched via WebSocket or REST (`PushSendJob`).
+  5. Receiving party fetches envelope, decrypts ratchet layer, and queues `AttachmentDownloadJob`.
+- **Policy Scope**: Master prompt requires **1:1 photo messaging to remain fully preserved and operational**. Both admins and non-admins must be able to send and receive photos in 1:1 chats without restriction.
 
-## 9. Application Lifecycle Management
-- **Startup**: `AppStartup` orchestrates multi-phase initialization without blocking critical UI rendering.
-- **Process & Key Locking**: `KeyCachingService` manages memory-resident decryption keys and locks secrets when the application is backgrounded or when timeout expires.
-- **Window Lifecycle**: Base activities and window observers update window properties (`FLAG_SECURE`) during `onCreate()`, `onResume()`, and window focus transitions.
+### 3.2 Group (GroupsV2) Messaging Architecture
+- **Protocol**: GroupsV2 protocol backed by client-side Sender Keys.
+- **Group Master Key & Secret**: Group state is encrypted under a group-specific secret key derived from `GroupMasterKey`.
+- **Message Dispatch**:
+  - Sender encrypts message once with their `SenderKey`.
+  - Message is fanned out to group members via server.
+  - Attachments are encrypted once with an ephemeral symmetric key and uploaded to CDN; decryption key is distributed inside the encrypted group message.
 
-## 10. Existing Screenshot Protection Analysis
-- **Core Implementation**: `org.signal.core.ui.WindowExtensionsKt.initializeScreenshotSecurity(Window)` applies `WindowManager.LayoutParams.FLAG_SECURE` based on `CoreUiDependencies.isScreenSecurityEnabled`.
-- **Settings Store**: `SignalStore.settings.isScreenSecurityEnabled` stores user preference (defaults to `false` in upstream Signal).
-- **Temporary Security**: `TemporaryScreenshotSecurity` allows temporary acquisition of `FLAG_SECURE` for sensitive operations (e.g., passphrase entry, PIN screens).
-- **Audit Findings**:
-  - Upstream allows disabling screen security via user preferences.
-  - Dialog windows and sub-activities do not always inherit the flag unless explicitly invoked in each fragment's lifecycle.
-  - Mandatory privacy customization requires enforcement of `FLAG_SECURE` universally across all sensitive windows without accidental clearing.
+---
 
-## 11. External Sharing and Export Mechanisms
-- **Media Saving**: `SaveAttachmentUtil.kt` and `AttachmentSaver.kt` provide user-initiated saving of media attachments directly to Android `MediaStore` (public `Pictures/`, `Movies/`, `Download/` directories).
-- **External App Sharing**:
-  - `MediaViewerActivity.share()` and `MediaPreviewFragment.share()` invoke `ShareCompat.IntentBuilder` with `PartAuthority.getAttachmentPublicUri(uri)`.
-  - `PartProvider` (`${applicationId}.part`) is configured with `android:grantUriPermissions="true"`, allowing foreign applications to stream decrypted media out of the app sandbox.
-- **Stories Sharing**: `StoryContextMenu.kt` exposes direct share intents with public attachment streams.
-- **Audit Findings**: These entry points allow received media to be exported to external third-party apps and stored permanently in shared device storage, violating the privacy requirements.
+## 4. Group Permission & Role Hierarchy Audit
 
-## 12. Existing Media Cleanup Mechanisms
-- **Thread Trimming**: `TrimThreadsJob` prunes old messages based on user storage thresholds.
-- **Disappearing Messages**: Handled by expiration timers in `ExpiringMessageManager`, deleting database entries and calling `AttachmentTable.deleteAttachmentsForMessage()`.
-- **Part File Deletion**: When an attachment record is deleted, `AttachmentTable` deletes the corresponding encrypted file from `parts/`.
-- **Audit Findings**: Upstream lacks an ephemeral session-based or bounded memory/cache retention policy specifically for received media files to prevent accumulation while preserving conversation history metadata.
+### 4.1 Existing Group Roles in Codebase
+Signal GroupsV2 maintains member roles in `GroupTable.kt` and `GroupRecord.kt`:
+```kotlin
+enum class MemberLevel(val isInGroup: Boolean) {
+  NOT_A_MEMBER(false),
+  PENDING_MEMBER(false),
+  REQUESTING_MEMBER(false),
+  FULL_MEMBER(true),
+  ADMINISTRATOR(true)
+}
+```
 
-## 13. Background Workers and Services
-- **Job Engine**: Custom `JobManager` manages persistent, fault-tolerant background tasks (`AttachmentUploadJob`, `AttachmentDownloadJob`, `SendJob`, `TrimThreadsJob`).
-- **WorkManager**: Used for periodic tasks, maintenance, and database compaction.
-- **Services**: `KeyCachingService` for secret caching; `PushNotificationService` for FCM/WebSocket notification processing.
+### 4.2 Group Role Verification APIs
+In `GroupRecord.kt`:
+- `fun isAdmin(recipient: Recipient): Boolean`: Evaluates whether the given recipient is an administrator of the group.
+- `fun memberLevel(recipient: Recipient): GroupTable.MemberLevel`: Returns exact membership state.
+- `fun isMember(recipient: Recipient): Boolean`: Returns true if active full member or administrator.
+- `fun isPendingMember(recipient: Recipient): Boolean`: Returns true for pending invites.
 
-## 14. Build Variants and Application Identifiers
-- `flavorDimensions`: Configured for distribution channels (`play`, `website`) and environments (`prod`, `staging`).
-- `applicationId`: Defined in `app/build.gradle.kts` (default `org.thoughtcrime.securesms`).
-- ContentProvider authorities (`.part`, `.avatar`, `.blob`, `.fileprovider`) are dynamically qualified with `${applicationId}`.
+### 4.3 Group Access Control
+- `GroupAccessControl`: Manages permissions for editing group info, adding members, and announcements.
+- Existing groups support announcement mode (where only admins can send messages). SecureChat extends this concept to **Admin-Only Group Photo Attachments**, where regular members retain full text/voice messaging rights but are strictly barred from attaching photos.
 
-## 15. Existing Test Infrastructure
-- **Unit Testing**: JUnit 4, Robolectric for Android framework simulation, MockK, AssertK.
-- **Integration & Database Tests**: Located in `app/src/test/` and `app/src/androidTest/` covering `AttachmentTable`, `SaveAttachmentUtil`, `ConversationViewModel`, and cryptographic primitives.
-- **Verification Strategy**: Automated unit tests can validate window security flag states, export policy enforcement, and attachment interceptors without requiring physical device hardware.
+---
+
+## 5. Attachment Pipelines: Selection, Staging, Upload & Rendering
+
+### 5.1 Selection & Staging
+- Initiated in `ConversationFragment.kt` via:
+  1. Quick Camera button.
+  2. Attachment menu (Gallery / Photo picker).
+  3. Keyboard gallery / photo paste.
+- Media picker uses modern Android Photo Picker (`ActivityResultContracts.PickVisualMedia` / `PickMultipleVisualMedia`), avoiding broad `READ_EXTERNAL_STORAGE` permissions.
+- Selected media streams are staged as app-private blobs in `BlobProvider`.
+
+### 5.2 Upload Workflow
+- `AttachmentUploadJob` reads from `BlobProvider`.
+- Encrypts payload with an ephemeral AES-256 key.
+- Uploads ciphertext to CDN.
+- Returns attachment metadata (id, digest, key, size, blurhash) to be embedded in `OutgoingMessage`.
+
+### 5.3 Download & Rendering Workflow
+- `AttachmentDownloadJob` fetches ciphertext from CDN.
+- Re-encrypts ciphertext at rest using app-specific `AttachmentSecret` into private `app_parts/` directory.
+- `PartAuthority.getAttachmentStream()` decrypts parts on-the-fly directly into memory buffers.
+- Rendered via Glide for images and ExoPlayer for videos.
+
+---
+
+## 6. Screenshot & Screen Recording Protection Audit
+
+### 6.1 Upstream Implementation
+- Upstream uses `WindowUtil.initializeScreenshotSecurity(Activity, Window)`.
+- Enabled conditionally based on `SignalStore.settings.isScreenSecurityEnabled` (defaults to false).
+- When false, Android takes task snapshots for the recent-apps switcher, exposing conversations in the task tray.
+
+### 6.2 Target Hardening
+- Universal enforcement via `PrivacyProtectionManager.kt`:
+  - Enforce `FLAG_SECURE` unconditionally on all conversation windows, media viewers, preview dialogs, and story viewers.
+  - Android 14+ `ScreenCaptureCallback` integration for proactive audit logging.
+  - Hardware surface protection: `SurfaceView.setSecure(true)` on ExoPlayer video rendering surfaces to defeat screen recorders and external compositors.
+
+---
+
+## 7. External Media Sharing & Export Mechanisms Audit
+
+### 7.1 Existing Export Vectors in Signal Android
+1. **Save to Gallery / Storage**:
+   - `SaveAttachmentUtil.kt`: Writes received decrypted media to Android `MediaStore.Images.Media` / `MediaStore.Downloads`.
+   - `AttachmentSaver.kt`: Background worker writing parts to public storage.
+2. **External Application Share Sheet**:
+   - `MediaViewerActivity.kt` & `MediaPreviewFragment.kt`: Builds `ACTION_SEND` intent with `PartAuthority.getAttachmentPublicUri(uri)`.
+3. **ContentProvider Exposure**:
+   - `PartProvider.java` (`${applicationId}.part`): Returns decrypted attachment streams to external apps when granted URI permissions.
+4. **Stories Context Menu**:
+   - `StoryContextMenu.kt`: Allows saving and sharing received stories.
+
+### 7.2 Required Restrictions
+- All above vectors must be intercepted, disabled, or rejected with `SecurityException` for received media.
+- Users can select their own local photos to send, but cannot export received protected media.
+
+---
+
+## 8. Database Architecture & Ephemeral Media Storage
+
+### 8.1 Database Storage
+- SQLCipher encrypted SQLite database (`SignalDatabase`).
+- Attachment metadata stored in `AttachmentTable`.
+- Ciphertext stored in app-private directory (`/data/data/org.thoughtcrime.securesms/app_parts`).
+
+### 8.2 Ephemeral Cache Hardening
+- Plaintext media must never reside in shared storage (`/sdcard/`, `Pictures/`, `Downloads/`).
+- Cached thumbnails and temporary decrypted views must reside strictly in app-private `.nomedia` directories.
+- Lifecycle purge hooks:
+  - Account logout / deregistration.
+  - Application memory trim (`onTrimMemory(TRIM_MEMORY_COMPLETE)`).
+  - Explicit media retention time window expiration.
+
+---
+
+## 9. Baseline Build & Compatibility Verification
+- Upstream Build Variant: `playProdDebug`.
+- Java 21 / Android Studio JBR.
+- Android Compile SDK: 37, Min SDK: 21, Target SDK: 35.
+- Baseline build verified successful in local environment.
