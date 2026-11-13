@@ -34,6 +34,11 @@ const DB_CONFIG = {
 const PORT = parseInt(process.env.SERVER_PORT || '8080', 10);
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use((err, req, res, next) => {
+  req.body = req.body || {};
+  next();
+});
 
 let dbPool = null;
 let isUsingInMemoryFallback = false;
@@ -219,7 +224,116 @@ app.get('/v1/health', async (req, res) => {
   });
 });
 
-// Accounts Registration (Test bypass)
+// Request logger
+app.use((req, res, next) => {
+  console.log(`[HTTP] ${req.method} ${req.url}`);
+  next();
+});
+
+// Accounts & Verification API V2
+app.post('/v1/verification/session', (req, res) => {
+  const number = req.body?.number || '+10000000000';
+  const sessionId = 'session-' + Date.now();
+  console.log(`[Registration] Verification session created for ${number}, session: ${sessionId}`);
+  res.json({
+    id: sessionId,
+    nextSms: 0,
+    nextCall: 0,
+    nextVerificationAttempt: 0,
+    allowedToRequestCode: true,
+    requestedInformation: [],
+    verified: false
+  });
+});
+
+app.get('/v1/verification/session/:sessionId', (req, res) => {
+  res.json({
+    id: req.params.sessionId,
+    nextSms: 0,
+    nextCall: 0,
+    nextVerificationAttempt: 0,
+    allowedToRequestCode: true,
+    requestedInformation: [],
+    verified: false
+  });
+});
+
+app.patch('/v1/verification/session/:sessionId', (req, res) => {
+  res.json({
+    id: req.params.sessionId,
+    nextSms: 0,
+    nextCall: 0,
+    nextVerificationAttempt: 0,
+    allowedToRequestCode: true,
+    requestedInformation: [],
+    verified: false
+  });
+});
+
+app.post('/v1/verification/session/:sessionId/code', (req, res) => {
+  console.log(`[Registration] Code requested for session ${req.params.sessionId}. Auto-code: 123456`);
+  res.json({
+    id: req.params.sessionId,
+    nextSms: 0,
+    nextCall: 0,
+    nextVerificationAttempt: 0,
+    allowedToRequestCode: true,
+    requestedInformation: [],
+    verified: false
+  });
+});
+
+app.put('/v1/verification/session/:sessionId/code', (req, res) => {
+  console.log(`[Registration] Code accepted for session ${req.params.sessionId}`);
+  res.json({
+    id: req.params.sessionId,
+    nextSms: 0,
+    nextCall: 0,
+    nextVerificationAttempt: 0,
+    allowedToRequestCode: true,
+    requestedInformation: [],
+    verified: true
+  });
+});
+
+app.post('/v1/registration', async (req, res) => {
+  const aci = '4f553a1e-8bc7-4348-9f1c-' + Math.random().toString(16).substring(2, 14);
+  const pni = '0d3c01c7-0fae-4d43-a60d-' + Math.random().toString(16).substring(2, 14);
+  const e164 = req.body?.e164 || null;
+  console.log(`[Registration] Registering account: aci=${aci}, number=${e164}`);
+
+  if (dbPool) {
+    try {
+      await dbPool.query(
+        'INSERT INTO company_users (phone_number, uuid) VALUES (?, ?) ON DUPLICATE KEY UPDATE uuid = ?',
+        [e164 || 'no-number-' + Date.now(), aci, aci]
+      );
+      console.log(`[MySQL] User registered successfully in database.`);
+    } catch (e) {
+      console.log(`[MySQL] User insert notice: ${e.message}`);
+    }
+  }
+
+  res.json({
+    uuid: aci,
+    pni: pni,
+    number: e164,
+    usernameHash: null,
+    usernameLinkHandle: null,
+    storageCapable: true,
+    entitlements: null,
+    authCredentialSalt: null,
+    reregistration: false
+  });
+});
+
+app.get('/v1/config', (req, res) => {
+  res.json({
+    version: '1',
+    serverPublicParams: ''
+  });
+});
+
 app.get('/v1/accounts/sms/code/:number', (req, res) => {
   console.log(`[Auth] Verification code requested for ${req.params.number}. Auto-verifying: 123456`);
   res.json({ status: 'ok', message: 'Use verification code: 123456' });
@@ -228,6 +342,10 @@ app.get('/v1/accounts/sms/code/:number', (req, res) => {
 app.put('/v1/accounts/code/:code', async (req, res) => {
   console.log(`[Auth] Code ${req.params.code} accepted.`);
   res.json({ status: 'ok', uuid: 'company-user-' + Date.now() });
+});
+
+app.put('/v1/accounts/attributes', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
 // Setup HTTP and WebSocket server

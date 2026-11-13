@@ -44,6 +44,9 @@ public class SignalUrl {
   }
 
   public Optional<List<ConnectionSpec>> getConnectionSpecs() {
+    if (url != null && url.startsWith("http://")) {
+      return Optional.of(java.util.Arrays.asList(ConnectionSpec.CLEARTEXT, ConnectionSpec.COMPATIBLE_TLS, ConnectionSpec.RESTRICTED_TLS));
+    }
     return connectionSpec.isPresent() ? Optional.of(Collections.singletonList(connectionSpec.get())) : Optional.empty();
   }
 
