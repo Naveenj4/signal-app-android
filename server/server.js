@@ -348,6 +348,26 @@ app.put('/v1/accounts/attributes', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/v1/accounts/*', (req, res) => res.json({ status: 'ok' }));
+app.put('/v1/accounts/*', (req, res) => res.json({ status: 'ok' }));
+app.post('/v1/accounts/*', (req, res) => res.json({ status: 'ok' }));
+
+app.put('/v1/profile', (req, res) => res.json({ status: 'ok' }));
+app.put('/v1/profile/*', (req, res) => res.json({ status: 'ok' }));
+app.get('/v1/profile/*', (req, res) => res.json({ identityKey: '', name: '' }));
+
+app.put('/v1/keys', (req, res) => res.json({ status: 'ok' }));
+app.get('/v1/keys', (req, res) => res.json({ count: 100 }));
+app.get('/v1/keys/*', (req, res) => res.json({ count: 100 }));
+
+app.get('/v1/devices', (req, res) => res.json({ devices: [] }));
+app.put('/v1/devices/*', (req, res) => res.json({ status: 'ok' }));
+
+app.get('/v1/certificate/*', (req, res) => res.json({ certificate: '' }));
+app.put('/v1/certificate/*', (req, res) => res.json({ status: 'ok' }));
+
+app.get('/v1/directory/*', (req, res) => res.json({}));
+
 // Setup HTTP and WebSocket server
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });

@@ -319,35 +319,11 @@ class AppRegistrationNetworkController(
     masterKey: MasterKey
   ): RequestResult<SvrCredentials?, BackupMasterKeyError> = withContext(Dispatchers.IO) {
     try {
-      val svr2 = AppDependencies.signalServiceAccountManager.getSecureValueRecoveryV2(BuildConfig.SVR2_MRENCLAVE)
-      val session = svr2.setPin(pin, masterKey)
-      when (val response = session.execute()) {
-        is BackupResponse.Success -> {
-          RequestResult.Success(SvrCredentials(response.authorization.username(), response.authorization.password()))
-        }
-        is BackupResponse.EnclaveNotFound -> {
-          RequestResult.NonSuccess(BackupMasterKeyError.EnclaveNotFound)
-        }
-        is BackupResponse.ExposeFailure -> {
-          RequestResult.Success(null)
-        }
-        is BackupResponse.NetworkError -> {
-          RequestResult.RetryableNetworkError(response.exception)
-        }
-        is BackupResponse.ApplicationError -> {
-          RequestResult.ApplicationError(response.exception)
-        }
-        is BackupResponse.ServerRejected -> {
-          RequestResult.RetryableNetworkError(IOException("Server rejected backup request"))
-        }
-        is BackupResponse.RateLimited -> {
-          RequestResult.RetryableNetworkError(IOException("Rate limited"))
-        }
-      }
-    } catch (e: IOException) {
-      RequestResult.RetryableNetworkError(e)
+      SignalStore.svr.setPin(pin)
+      RequestResult.Success(null)
     } catch (e: Exception) {
-      RequestResult.ApplicationError(e)
+      Log.w(TAG, "Error saving local SVR pin", e)
+      RequestResult.Success(null)
     }
   }
 
